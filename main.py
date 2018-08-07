@@ -252,6 +252,10 @@ class Dataset(NetObject):
 			deb.prints(data['label_h'][0])
 			deb.prints(data['prediction_h'][0])
 
+			deb.prints(data['label_h'][25])
+			deb.prints(data['prediction_h'][25])
+
+
 			deb.prints(np.unique(data['label_h']))
 			deb.prints(np.unique(data['prediction_h']))
 
@@ -261,7 +265,7 @@ class Dataset(NetObject):
 		metrics['overall_acc']=accuracy_score(data['prediction_h'],data['label_h'])
 		
 		
-		metrics['confusion_matrix']=confusion_matrix(data['prediction_h'],data['label_h'].argmax(axis=1))
+		metrics['confusion_matrix']=confusion_matrix(data['prediction_h'],data['label_h'])
 		
 		deb.prints(metrics['confusion_matrix'])
 		metrics['average_acc'],metrics['per_class_acc']=self.average_acc_binary(data['prediction_h'],data['label_h'])
@@ -474,7 +478,7 @@ class NetModel(NetObject):
 		in_im = Input(shape=(self.patch_len, self.patch_len, self.channel_n),name="ims")
 		#in_im = Lambda(lambda x : x[0,:,:,:])(in_ims)
 		support = Input(shape=(self.patch_len, self.patch_len, self.channel_n+1),name="support")
-		filters = 16
+		filters = 64
 
 		#support = Lambda(lambda y: K.squeeze(y, 1))(support)
 
@@ -530,8 +534,8 @@ class NetModel(NetObject):
 		print(self.graph.summary())
 
 	def compile(self, optimizer, loss='binary_crossentropy', metrics=['accuracy',metrics.categorical_accuracy],loss_weights=None):
-		loss_weighted=weighted_categorical_crossentropy(loss_weights)
-		self.graph.compile(loss=loss_weighted, optimizer=optimizer, metrics=metrics)
+		#loss_weighted=weighted_categorical_crossentropy(loss_weights)
+		self.graph.compile(loss=loss, optimizer=optimizer, metrics=metrics)
 
 	def train(self, data):
 
@@ -625,7 +629,7 @@ class NetModel(NetObject):
 				##batch['train']['label'] = data.patches['train']['label'][idx0:idx1]
 				#deb.prints(batch['train']['in'].shape)
 				self.metrics['train']['loss'] += self.graph.train_on_batch(
-					{"ims":batch['train']['in'],"support":batch['train']['in']}, batch['train']['label'])		# Accumulated epoch
+					{"ims":batch['train']['in'],"support":batch['train']['support']}, batch['train']['label'])		# Accumulated epoch
 
 			# Average epoch loss
 			self.metrics['train']['loss'] /= self.batch['train']['n']
@@ -646,12 +650,12 @@ class NetModel(NetObject):
 				##batch['test']['support']=np.ones((self.batch['test']['size'],32,32,4)).astype('float32')
 				if self.batch_test_stats:
 					self.metrics['test']['loss'] += self.graph.test_on_batch(
-						[batch['test']['in'],batch['test']['in']], batch['test']['label'])		# Accumulated epoch
+						[batch['test']['in'],batch['test']['support']], batch['test']['label'])		# Accumulated epoch
 				
 				#deb.prints(data.patches['test']['prediction'][idx0:idx1].shape)
 				#deb.prints(data.patches['test']['prediction'].shape)
 				#print(idx0,idx1)
-				data.patches['test']['prediction'][idx0:idx1]=self.graph.predict([batch['test']['in'],batch['test']['in']],batch_size=self.batch['test']['size'])
+				data.patches['test']['prediction'][idx0:idx1]=self.graph.predict([batch['test']['in'],batch['test']['support']],batch_size=self.batch['test']['size'])
 				patches_label[idx0:idx1]=batch['test']['label']
 				#deb.prints(data.patches['test']['prediction'][1].shape)
 				
