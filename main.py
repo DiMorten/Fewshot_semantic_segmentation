@@ -259,6 +259,7 @@ class Dataset(NetObject):
 		
 		metrics['confusion_matrix']=confusion_matrix(data['prediction_h'].argmax(axis=1),data['label_h'].argmax(axis=1))
 		
+		deb.prints(metrics['confusion_matrix'])
 		metrics['average_acc'],metrics['per_class_acc']=self.average_acc(data['prediction_h'],data['label_h'])
 		deb.prints(metrics['per_class_acc'])
 		data_label_reconstructed=self.flattened_to_im(data['label_h'],label.shape)
@@ -409,7 +410,7 @@ class Dataset(NetObject):
 		if self.debug>2: print("ALKL",patches_label_copy.shape)
 		while flag!=3:
 			#for _class in range(0,self.class_n):
-			for _class in [0,0]:
+			for _class in [3,3]:
 			
 				if flag==3:
 					break
@@ -444,7 +445,7 @@ class Dataset(NetObject):
 		patches_label_binary2=np.expand_dims(patches_label_binary2,axis=3)
 		#patches_label_binary2=np.concatenate((patches_label_binary1,1-patches_label_binary1),axis=3)
 		
-		if self.debug>=1:
+		if self.debug>=3:
 			#deb.prints(np.average(patches_label_binary1[id1]))
 			#deb.prints(np.average(patches_label_binary2[id2]))
 			deb.prints(patches_label_binary1[id1].shape)
@@ -676,7 +677,7 @@ class NetModel(NetObject):
 				#batch['test']['in'] = np.concatenate((batch['test']['in'],batch['test']['in']),axis=1)
 				##batch['test']['label'] = data.patches['test']['label'][idx0:idx1]
 				##batch['test']['support']=np.ones((self.batch['test']['size'],32,32,4)).astype('float32')
-				deb.prints(batch['test']['support'].shape)
+				#deb.prints(batch['test']['support'].shape)
 				
 				if self.batch_test_stats:
 					self.metrics['test']['loss'] += self.graph.test_on_batch(
