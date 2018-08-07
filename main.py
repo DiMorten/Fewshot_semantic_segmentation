@@ -653,7 +653,7 @@ class NetModel(NetObject):
 
 			for batch_id in range(0, self.batch['train']['n']):
 
-				batch['train']=data.batch_sample_get(self.batch['test']['size'],subset='test')
+				batch['train']=data.batch_sample_get(self.batch['train']['size'],subset='train')
 				
 				if self.debug>3:
 					deb.prints(batch['train']['label'][4].shape)	
