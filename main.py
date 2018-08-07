@@ -59,7 +59,7 @@ if args.patch_step_test==None:
 	args.patch_step_test=args.patch_len
 
 deb.prints(args.patch_step_test)
-def unique_counts(array):
+def unique_count(array):
 	_,count=np.unique(array,return_counts=True)
 	return count
 # ================= Generic class for init values =============================================== #
@@ -191,7 +191,7 @@ class Dataset(NetObject):
 	def ims_flatten(self,ims):
 		return np.reshape(ims,(np.prod(ims.shape[0:-1]),ims.shape[-1])).astype(np.float64)
 
-	def average_acc(self,y_pred,y_true,class_n=5):
+	def average_acc(self,y_pred,y_true,class_n=2):
 		correct_per_class=np.zeros(class_n)
 		correct_all=y_pred.argmax(axis=1)[y_pred.argmax(axis=1)==y_true.argmax(axis=1)]
 		for clss in range(0,class_n):
@@ -226,9 +226,53 @@ class Dataset(NetObject):
 	def assert_equal(self,val1,val2):
 		return np.equal(val1,val2)
 
-
-
 	def metrics_get(self,data,label): #requires batch['prediction'],batch['label']
+		
+
+		data['prediction_h'] = self.ims_flatten(data['prediction'])
+		data['prediction_h']=self.probabilities_to_one_hot(data['prediction_h'])
+				
+		data['label_h'] = self.ims_flatten(label) #(self.batch['test']['size']*self.patch_len*self.patch_len,self.class_n
+		
+		if self.debug>=1: 
+			deb.prints(label.shape)
+			deb.prints(data['prediction_h'].dtype)
+			deb.prints(data['label_h'].dtype)
+			deb.prints(data['prediction_h'].shape)
+			deb.prints(data['label_h'].shape)
+			deb.prints(data['label_h'][0])
+			deb.prints(data['prediction_h'][0])
+
+			deb.prints(data['label_h'][25])
+			deb.prints(data['prediction_h'][25])
+
+
+			deb.prints(np.unique(data['label_h']))
+			deb.prints(np.unique(data['prediction_h']))
+			deb.prints(unique_count(data['label_h']))
+			deb.prints(unique_count(data['prediction_h']))
+					
+		metrics={}
+		metrics['f1_score']=f1_score(data['prediction_h'],data['label_h'],average='macro')
+		metrics['overall_acc']=accuracy_score(data['prediction_h'],data['label_h'])
+		
+		
+		metrics['confusion_matrix']=confusion_matrix(data['prediction_h'].argmax(axis=1),data['label_h'].argmax(axis=1))
+		
+		metrics['average_acc'],metrics['per_class_acc']=self.average_acc(data['prediction_h'],data['label_h'])
+		deb.prints(metrics['per_class_acc'])
+		data_label_reconstructed=self.flattened_to_im(data['label_h'],label.shape)
+		data_prediction_reconstructed=self.flattened_to_im(data['prediction_h'],label.shape)
+		
+		deb.prints(data_label_reconstructed.shape)
+		np.testing.assert_almost_equal(label,data_label_reconstructed)
+		print("Is label reconstructed equal to original",np.array_equal(label,data_label_reconstructed))
+		print("Is prediction reconstructed equal to original",np.array_equal(data['prediction'].argmax(axis=3),data_prediction_reconstructed.argmax(axis=3)))
+
+		if self.debug>=2: print(metrics['per_class_acc'])
+
+		return metrics
+	def metrics_get_binary(self,data,label): #requires batch['prediction'],batch['label']
 		
 
 		deb.prints(label.shape)
@@ -258,7 +302,9 @@ class Dataset(NetObject):
 
 			deb.prints(np.unique(data['label_h']))
 			deb.prints(np.unique(data['prediction_h']))
-
+			deb.prints(unique_count(data['label_h']))
+			deb.prints(unique_count(data['prediction_h']))
+					
 
 		metrics={}
 		metrics['f1_score']=f1_score(data['prediction_h'],data['label_h'],average='macro')
@@ -394,17 +440,20 @@ class Dataset(NetObject):
 		id1=id1[0:batch_size]
 		id2=id2[0:batch_size]
 		patches_label_binary1=np.expand_dims(patches_label_binary1,axis=3)
-		
+		patches_label_binary1=np.concatenate((patches_label_binary1,1-patches_label_binary1),axis=3)
 		patches_label_binary2=np.expand_dims(patches_label_binary2,axis=3)
-
-		if self.debug>3:
-			deb.prints(np.average(patches_label_binary1[id1]))
-			deb.prints(np.average(patches_label_binary2[id2]))
+		#patches_label_binary2=np.concatenate((patches_label_binary1,1-patches_label_binary1),axis=3)
+		
+		if self.debug>=1:
+			#deb.prints(np.average(patches_label_binary1[id1]))
+			#deb.prints(np.average(patches_label_binary2[id2]))
+			deb.prints(patches_label_binary1[id1].shape)
 			deb.prints(patches_label_binary2[id2].shape)
+			
 			deb.prints(self.patches[subset]['in'][id2].shape)
 
-			deb.prints(id1)
-			deb.prints(id2)
+			#deb.prints(id1)
+			#deb.prints(id2)
 
 
 		batch={}
@@ -525,7 +574,7 @@ class NetModel(NetObject):
 		c['up']-=1
 		pipe.append(self.concatenate_transition_up(pipe[-1], pipe[c['up']], filters))  # 6
 
-		out = Conv2D(1, (1, 1), activation='sigmoid',
+		out = Conv2D(2, (1, 1), activation='softmax',
 					 padding='same')(pipe[-1])
 
 		self.graph = Model([in_im,support], out)
@@ -534,8 +583,8 @@ class NetModel(NetObject):
 		print(self.graph.summary())
 
 	def compile(self, optimizer, loss='binary_crossentropy', metrics=['accuracy',metrics.categorical_accuracy],loss_weights=None):
-		#loss_weighted=weighted_categorical_crossentropy(loss_weights)
-		self.graph.compile(loss=loss, optimizer=optimizer, metrics=metrics)
+		loss_weighted=weighted_categorical_crossentropy(loss_weights)
+		self.graph.compile(loss=loss_weighted, optimizer=optimizer, metrics=metrics)
 
 	def train(self, data):
 
@@ -597,49 +646,28 @@ class NetModel(NetObject):
 
 			for batch_id in range(0, self.batch['train']['n']):
 
-				batch['train']=data.batch_sample_get(self.batch['train']['size'],subset='train')
+				batch['train']=data.batch_sample_get(self.batch['test']['size'],subset='test')
 				
-				#unique,count=np.unique(batch['train']['label'],return_counts=True)
-				#print("train batch label",unique,count)
-				#unique,count=np.unique(batch['train']['support'][:,:,:,-1],return_counts=True)
-				#print("train batch support label",unique,count)
-				#deb.prints(batch['train']['support'][:,:,:,-1].shape)
-				##idx0 = batch_id*self.batch['train']['size']
-				##idx1 = (batch_id+1)*self.batch['train']['size']
-				###print("unique sup2",unique_counts(batch['train']['label'][4]), np.unique(batch['train']['label'][4]))
-				###print("unique sup2",unique_counts(batch['train']['label'][9]), np.unique(batch['train']['label'][9]))
-
-				deb.prints(batch['train']['label'][4].shape)
-				###print("unique sup2",unique_counts(batch['train']['support'][4,:,:,3]), np.unique(batch['train']['support'][4,:,:,3]))
-
+				if self.debug>3:
+					deb.prints(batch['train']['label'][4].shape)	
+					deb.prints(batch['train']['support'][4,:,:,3].shape)
+					cv2.imwrite("sample_in.png",batch['train']['label'][4]*255)
+					cv2.imwrite("sample_sup.png",batch['train']['support'][4,:,:,3]*255)					
+					cv2.imwrite("sample_in1.png",batch['train']['label'][9]*255)
+					cv2.imwrite("sample_sup1.png",batch['train']['support'][9,:,:,3]*255)
 				
-				###print("unique sup",unique_counts(batch['train']['support'][9,:,:,3]),np.unique(batch['train']['support'][9,:,:,3]))
-
-				
-				deb.prints(batch['train']['support'][4,:,:,3].shape)
-				
-				cv2.imwrite("sample_in.png",batch['train']['label'][4]*255)
-				cv2.imwrite("sample_sup.png",batch['train']['support'][4,:,:,3]*255)
-				
-				cv2.imwrite("sample_in1.png",batch['train']['label'][9]*255)
-				cv2.imwrite("sample_sup1.png",batch['train']['support'][9,:,:,3]*255)
-				
-				##batch['train']['in'] = data.patches['train']['in'][idx0:idx1]
-				##batch['train']['support']=np.ones((self.batch['train']['size'],32,32,4)).astype('float32')
-				##batch['train']['label'] = data.patches['train']['label'][idx0:idx1]
-				#deb.prints(batch['train']['in'].shape)
 				self.metrics['train']['loss'] += self.graph.train_on_batch(
 					{"ims":batch['train']['in'],"support":batch['train']['support']}, batch['train']['label'])		# Accumulated epoch
 
 			# Average epoch loss
 			self.metrics['train']['loss'] /= self.batch['train']['n']
 			deb.prints(self.metrics['train']['loss'])
-			data.patches['test']['prediction']=np.zeros((data.patches['test']['n'],self.patch_len,self.patch_len,1))
+			data.patches['test']['prediction']=np.zeros((data.patches['test']['n'],self.patch_len,self.patch_len,2))
 			#patches_label=np.zeros_like(data.patches['test']['label'])
-			patches_label=np.zeros((data.patches['test']['n'],self.patch_len,self.patch_len,1))
+			patches_label=np.zeros((data.patches['test']['n'],self.patch_len,self.patch_len,2))
 			self.batch_test_stats=True
 			for batch_id in range(0, self.batch['test']['n']):
-				batch['test']=data.batch_sample_get(self.batch['test']['size'],subset='train')
+				batch['test']=data.batch_sample_get(self.batch['test']['size'],subset='test')
 				idx0 = batch_id*self.batch['test']['size']
 				idx1 = (batch_id+1)*self.batch['test']['size']
 
@@ -648,6 +676,8 @@ class NetModel(NetObject):
 				#batch['test']['in'] = np.concatenate((batch['test']['in'],batch['test']['in']),axis=1)
 				##batch['test']['label'] = data.patches['test']['label'][idx0:idx1]
 				##batch['test']['support']=np.ones((self.batch['test']['size'],32,32,4)).astype('float32')
+				deb.prints(batch['test']['support'].shape)
+				
 				if self.batch_test_stats:
 					self.metrics['test']['loss'] += self.graph.test_on_batch(
 						[batch['test']['in'],batch['test']['support']], batch['test']['label'])		# Accumulated epoch
@@ -659,8 +689,8 @@ class NetModel(NetObject):
 				patches_label[idx0:idx1]=batch['test']['label']
 				#deb.prints(data.patches['test']['prediction'][1].shape)
 				
-			cv2.imwrite("prediction.png",data.patches['test']['prediction'][1])
-			cv2.imwrite("prediction2.png",data.patches['test']['prediction'][5])	
+			#cv2.imwrite("prediction.png",data.patches['test']['prediction'][1])
+			#cv2.imwrite("prediction2.png",data.patches['test']['prediction'][5])	
 			deb.prints(data.patches['test']['label'].shape)		
 			deb.prints(idx1)
 			print("Epoch={}".format(epoch))	
