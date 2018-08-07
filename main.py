@@ -398,6 +398,9 @@ class Dataset(NetObject):
 		im=im[:,:,_class]
 		nonzero=np.count_nonzero(im) # np.multiply(im.shape)
 		return nonzero
+	#def id_repeat_condition(self,id1,_id):
+
+
 	def batch_sample_get(self,batch_size,subset='train'):
 		flag=0
 		count_class_min=200
@@ -427,7 +430,10 @@ class Dataset(NetObject):
 						
 				while flag==1: # Support
 					_id=np.random.randint(self.patches[subset]['n'])
+					if _id in id1:
+						continue
 					count_class=self.class_condition(self.patches[subset]['label'][_id],_class)
+					#id_repeat_condition=self.id_repeat_condition(id1,_id)
 					if count_class>=count_class_min:
 						id2.append(_id)
 						flag=2
