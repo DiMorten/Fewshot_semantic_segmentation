@@ -218,12 +218,18 @@ class Dataset(NetObject):
 	def metrics_get(self,data,label): #requires batch['prediction'],batch['label']
 		
 
+		deb.prints(label.shape)
+		deb.prints(data['prediction'].shape)
 		data['prediction_h'] = self.ims_flatten(data['prediction'])
+		deb.prints(data['prediction_h'].shape)
 		data['prediction_h']=self.probabilities_to_one_hot(data['prediction_h'])
 				
 		data['label_h'] = self.ims_flatten(label) #(self.batch['test']['size']*self.patch_len*self.patch_len,self.class_n
 		
-		if self.debug>=3: 
+
+
+		if self.debug>=1: 
+			deb.prints(label.shape)
 			deb.prints(data['prediction_h'].dtype)
 			deb.prints(data['label_h'].dtype)
 			deb.prints(data['prediction_h'].shape)
@@ -238,6 +244,7 @@ class Dataset(NetObject):
 		
 		metrics['confusion_matrix']=confusion_matrix(data['prediction_h'].argmax(axis=1),data['label_h'].argmax(axis=1))
 		
+		deb.prints(metrics['confusion_matrix'])
 		metrics['average_acc'],metrics['per_class_acc']=self.average_acc(data['prediction_h'],data['label_h'])
 		deb.prints(metrics['per_class_acc'])
 		data_label_reconstructed=self.flattened_to_im(data['label_h'],label.shape)
@@ -323,7 +330,7 @@ class Dataset(NetObject):
 		return nonzero
 	def batch_sample_get(self,batch_size,subset='train'):
 		flag=0
-		count_class_min=300
+		count_class_min=200
 		id1=[]
 		id2=[]
 		patches_label_copy=self.patches[subset]['label'].copy()
@@ -556,9 +563,15 @@ class NetModel(NetObject):
 				#deb.prints(batch['train']['support'][:,:,:,-1].shape)
 				##idx0 = batch_id*self.batch['train']['size']
 				##idx1 = (batch_id+1)*self.batch['train']['size']
+				print("unique sup2",unique_counts(batch['train']['label'][4]), np.unique(batch['train']['label'][4]))
+				print("unique sup2",unique_counts(batch['train']['label'][9]), np.unique(batch['train']['label'][9]))
+
 				deb.prints(batch['train']['label'][4].shape)
-				print("unique c",unique_counts(batch['train']['support'][4,:,:,3]))
-				print("unique v",np.unique(batch['train']['support'][4,:,:,3]))
+				print("unique sup2",unique_counts(batch['train']['support'][4,:,:,3]), np.unique(batch['train']['support'][4,:,:,3]))
+
+				
+				print("unique sup",unique_counts(batch['train']['support'][9,:,:,3]),np.unique(batch['train']['support'][9,:,:,3]))
+
 				
 				deb.prints(batch['train']['support'][4,:,:,3].shape)
 				
@@ -578,8 +591,9 @@ class NetModel(NetObject):
 			# Average epoch loss
 			self.metrics['train']['loss'] /= self.batch['train']['n']
 
-			data.patches['test']['prediction']=np.zeros_like(data.patches['test']['label'])
-			patches_label=np.zeros_like(data.patches['test']['label'])
+			data.patches['test']['prediction']=np.zeros((data.patches['test']['n'],self.patch_len,self.patch_len,1))
+			#patches_label=np.zeros_like(data.patches['test']['label'])
+			patches_label=np.zeros((data.patches['test']['n'],self.patch_len,self.patch_len,1))
 			self.batch_test_stats=True
 			for batch_id in range(0, self.batch['test']['n']):
 				batch['test']=data.batch_sample_get(self.batch['test']['size'],subset='test')
@@ -594,13 +608,16 @@ class NetModel(NetObject):
 				if self.batch_test_stats:
 					self.metrics['test']['loss'] += self.graph.test_on_batch(
 						[batch['test']['in'],batch['test']['support']], batch['test']['label'])		# Accumulated epoch
-
+				
+				#deb.prints(data.patches['test']['prediction'][idx0:idx1].shape)
+				#deb.prints(data.patches['test']['prediction'].shape)
+				#print(idx0,idx1)
 				data.patches['test']['prediction'][idx0:idx1]=self.graph.predict([batch['test']['in'],batch['test']['support']],batch_size=self.batch['test']['size'])
 				patches_label[idx0:idx1]=batch['test']['label']
-				deb.prints(data.patches['test']['prediction'][1].shape)
-				cv2.imwrite("prediction.png",data.patches['test']['prediction'][1])
-				cv2.imwrite("prediction2.png",data.patches['test']['prediction'][5])
+				#deb.prints(data.patches['test']['prediction'][1].shape)
 				
+			cv2.imwrite("prediction.png",data.patches['test']['prediction'][1])
+			cv2.imwrite("prediction2.png",data.patches['test']['prediction'][5])	
 			deb.prints(data.patches['test']['label'].shape)		
 			deb.prints(idx1)
 			print("Epoch={}".format(epoch))	
