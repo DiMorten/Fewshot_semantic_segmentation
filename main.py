@@ -256,6 +256,8 @@ class Dataset(NetObject):
 		metrics['f1_score']=f1_score(data['prediction_h'],data['label_h'],average='macro')
 		metrics['overall_acc']=accuracy_score(data['prediction_h'],data['label_h'])
 		
+		deb.prints(np.count_nonzero(data['prediction_h'].argmax(axis=1)))
+		deb.prints(np.count_nonzero(data['label_h'].argmax(axis=1)))
 		
 		metrics['confusion_matrix']=confusion_matrix(data['prediction_h'].argmax(axis=1),data['label_h'].argmax(axis=1))
 		
@@ -394,16 +396,26 @@ class Dataset(NetObject):
 		out=np.zeros((self.patch_len,self.patch_len))
 		out=im[:,:,_class]
 		return out
+	def batch_label_binarize(self,im,_class,batch_size):
+		out=np.zeros((batch_size,self.patch_len,self.patch_len))
+		out=im[:,:,:,_class]
+		return out
+		
 	def class_condition(self,im,_class):
 		im=im[:,:,_class]
 		nonzero=np.count_nonzero(im) # np.multiply(im.shape)
 		return nonzero
 	#def id_repeat_condition(self,id1,_id):
 
-
-	def batch_sample_get(self,batch_size,subset='train'):
+	def batch_binary_to_onehot_im(self,im):
+		im=np.expand_dims(im,axis=3)
+		im=np.concatenate((im,1-im),axis=3)
+		return im
+	def batch_sample_get(self,batch_size,subset='train',count_class_min_support=300):
 		flag=0
-		count_class_min=200
+		count_class_min_in=2
+		#count_class_min_support=300
+		
 		id1=[]
 		id2=[]
 		patches_label_copy=self.patches[subset]['label'].copy()
@@ -422,7 +434,7 @@ class Dataset(NetObject):
 					_id=np.random.randint(self.patches[subset]['n'])
 					count_class=self.class_condition(self.patches[subset]['label'][_id],_class)
 
-					if count_class>=count_class_min:#if np.isin(self.patches[subset]['label'][_id],_class):
+					if count_class>=count_class_min_in:#if np.isin(self.patches[subset]['label'][_id],_class):
 						#print("here")
 						id1.append(_id)
 						flag=1
@@ -434,7 +446,7 @@ class Dataset(NetObject):
 						continue
 					count_class=self.class_condition(self.patches[subset]['label'][_id],_class)
 					#id_repeat_condition=self.id_repeat_condition(id1,_id)
-					if count_class>=count_class_min:
+					if count_class>=count_class_min_support:
 						id2.append(_id)
 						flag=2
 						patches_label_binary2[_id]=self.label_binarize(self.patches[subset]['label'][_id],_class)
@@ -446,8 +458,9 @@ class Dataset(NetObject):
 					flag=3
 		id1=id1[0:batch_size]
 		id2=id2[0:batch_size]
-		patches_label_binary1=np.expand_dims(patches_label_binary1,axis=3)
-		patches_label_binary1=np.concatenate((patches_label_binary1,1-patches_label_binary1),axis=3)
+		patches_label_binary1=self.batch_binary_to_onehot_im(patches_label_binary1)
+		#patches_label_binary1=np.expand_dims(patches_label_binary1,axis=3)
+		#patches_label_binary1=np.concatenate((patches_label_binary1,1-patches_label_binary1),axis=3)
 		patches_label_binary2=np.expand_dims(patches_label_binary2,axis=3)
 		#patches_label_binary2=np.concatenate((patches_label_binary1,1-patches_label_binary1),axis=3)
 		
@@ -470,6 +483,13 @@ class Dataset(NetObject):
 			deb.prints(patches_label_binary2[id2].shape)
 		batch['support']=np.concatenate((self.patches[subset]['in'][id2],patches_label_binary2[id2]),axis=3)
 		batch['label']=patches_label_binary1[id1]
+
+		deb.prints(np.count_nonzero(batch['label'][:,:,:,0]))
+		deb.prints(np.count_nonzero(batch['label'][:,:,:,1]))
+		
+		deb.prints(np.count_nonzero(patches_label_binary2[id2][:,:,:,0]))
+		deb.prints(np.count_nonzero(1-patches_label_binary2[id2][:,:,:,0]))
+		
 
 		#deb.prints(batch['support'].shape)
 		#deb.prints(batch['support'][:,:,:,3].shape)
@@ -653,14 +673,20 @@ class NetModel(NetObject):
 
 			for batch_id in range(0, self.batch['train']['n']):
 
-				batch['train']=data.batch_sample_get(self.batch['test']['size'],subset='test')
+				batch['train']=data.batch_sample_get(self.batch['train']['size'],subset='train')
 				
-				if self.debug>3:
+				if self.debug>=1:
+					
+					deb.prints(unique_count(batch['train']['label'][4,:,:,1]))	
+					deb.prints(unique_count(batch['train']['label'][10,:,:,1]))	
+					deb.prints(unique_count(batch['train']['support'][4,:,:,3]))	
+					deb.prints(unique_count(batch['train']['support'][10,:,:,3]))	
+					
 					deb.prints(batch['train']['label'][4].shape)	
 					deb.prints(batch['train']['support'][4,:,:,3].shape)
-					cv2.imwrite("sample_in.png",batch['train']['label'][4]*255)
+					cv2.imwrite("sample_in.png",batch['train']['label'][4,:,:,1]*255)
 					cv2.imwrite("sample_sup.png",batch['train']['support'][4,:,:,3]*255)					
-					cv2.imwrite("sample_in1.png",batch['train']['label'][9]*255)
+					cv2.imwrite("sample_in1.png",batch['train']['label'][9,:,:,1]*255)
 					cv2.imwrite("sample_sup1.png",batch['train']['support'][9,:,:,3]*255)
 				
 				self.metrics['train']['loss'] += self.graph.train_on_batch(
@@ -674,21 +700,27 @@ class NetModel(NetObject):
 			patches_label=np.zeros((data.patches['test']['n'],self.patch_len,self.patch_len,2))
 			self.batch_test_stats=True
 			for batch_id in range(0, self.batch['test']['n']):
-				batch['test']=data.batch_sample_get(self.batch['test']['size'],subset='test')
+				batch['test']=data.batch_sample_get(self.batch['test']['size'],subset='test',count_class_min_support=300)
 				idx0 = batch_id*self.batch['test']['size']
 				idx1 = (batch_id+1)*self.batch['test']['size']
 
-				##batch['test']['in'] = data.patches['test']['in'][idx0:idx1]
+				### Do this for in normally. Support could be random
+				batch['test']['in'] = data.patches['test']['in'][idx0:idx1]
 				#batch['test']['in'] = np.expand_dims(batch['test']['in'],axis=1)
 				#batch['test']['in'] = np.concatenate((batch['test']['in'],batch['test']['in']),axis=1)
-				##batch['test']['label'] = data.patches['test']['label'][idx0:idx1]
+				batch['test']['label'] = data.patches['test']['label'][idx0:idx1]
+				deb.prints(batch['test']['label'].shape)
+				batch['test']['label'] = data.batch_label_binarize(batch['test']['label'],3,self.batch['test']['size'])
+				batch['test']['label'] = data.batch_binary_to_onehot_im(batch['test']['label'])
+				deb.prints(batch['test']['label'].shape)
+
 				##batch['test']['support']=np.ones((self.batch['test']['size'],32,32,4)).astype('float32')
 				#deb.prints(batch['test']['support'].shape)
-				
+				print("here1")
 				if self.batch_test_stats:
 					self.metrics['test']['loss'] += self.graph.test_on_batch(
 						[batch['test']['in'],batch['test']['support']], batch['test']['label'])		# Accumulated epoch
-				
+				print("here2")
 				#deb.prints(data.patches['test']['prediction'][idx0:idx1].shape)
 				#deb.prints(data.patches['test']['prediction'].shape)
 				#print(idx0,idx1)
@@ -734,7 +766,7 @@ if __name__ == '__main__':
 					 batch_size_train=args.batch_size_train,batch_size_test=args.batch_size_test,
 					 patience=args.patience)
 	model.build()
-	model.loss_weights=np.array([0.2, 0.8])
+	model.loss_weights=np.array([0.05, 0.95])
 	metrics=['accuracy']
 	#metrics=['accuracy',fmeasure,categorical_accuracy]
 	model.compile(loss='binary_crossentropy',
