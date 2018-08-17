@@ -394,13 +394,21 @@ class Dataset(NetObject):
 		out=np.zeros((self.patch_len,self.patch_len))
 		out=im[:,:,_class]
 		return out
+	def batch_label_binarize(self,im,_class,batch_size):
+		out=np.zeros((batch_size,self.patch_len,self.patch_len))
+		out=im[:,:,:,_class]
+		return out
+		
 	def class_condition(self,im,_class):
 		im=im[:,:,_class]
 		nonzero=np.count_nonzero(im) # np.multiply(im.shape)
 		return nonzero
 	#def id_repeat_condition(self,id1,_id):
 
-
+	def batch_binary_to_onehot_im(self,im):
+		im=np.expand_dims(im,axis=3)
+		im=np.concatenate((im,1-im),axis=3)
+		return im
 	def batch_sample_get(self,batch_size,subset='train'):
 		flag=0
 		count_class_min=200
@@ -413,7 +421,7 @@ class Dataset(NetObject):
 		if self.debug>2: print("ALKL",patches_label_copy.shape)
 		while flag!=3:
 			#for _class in range(0,self.class_n):
-			for _class in [3,3]:
+			for _class in [0,0]:
 			
 				if flag==3:
 					break
@@ -655,12 +663,12 @@ class NetModel(NetObject):
 
 				batch['train']=data.batch_sample_get(self.batch['train']['size'],subset='train')
 				
-				if self.debug>3:
-					deb.prints(batch['train']['label'][4].shape)	
-					deb.prints(batch['train']['support'][4,:,:,3].shape)
-					cv2.imwrite("sample_in.png",batch['train']['label'][4]*255)
+				if self.debug>=1:
+					#deb.prints(batch['train']['label'][4].shape)	
+					#deb.prints(batch['train']['support'][4,:,:,3].shape)
+					cv2.imwrite("sample_in.png",batch['train']['label'][4,:,:,1]*255)
 					cv2.imwrite("sample_sup.png",batch['train']['support'][4,:,:,3]*255)					
-					cv2.imwrite("sample_in1.png",batch['train']['label'][9]*255)
+					cv2.imwrite("sample_in1.png",batch['train']['label'][9,:,:,1]*255)
 					cv2.imwrite("sample_sup1.png",batch['train']['support'][9,:,:,3]*255)
 				
 				self.metrics['train']['loss'] += self.graph.train_on_batch(
@@ -677,6 +685,8 @@ class NetModel(NetObject):
 				batch['test']=data.batch_sample_get(self.batch['test']['size'],subset='test')
 				idx0 = batch_id*self.batch['test']['size']
 				idx1 = (batch_id+1)*self.batch['test']['size']
+				batch['test']['in'] = data.patches['test']['in'][idx0:idx1]
+				batch['test']['label'] = data.patches['test']['label'][idx0:idx1]
 
 				##batch['test']['in'] = data.patches['test']['in'][idx0:idx1]
 				#batch['test']['in'] = np.expand_dims(batch['test']['in'],axis=1)
@@ -684,7 +694,8 @@ class NetModel(NetObject):
 				##batch['test']['label'] = data.patches['test']['label'][idx0:idx1]
 				##batch['test']['support']=np.ones((self.batch['test']['size'],32,32,4)).astype('float32')
 				#deb.prints(batch['test']['support'].shape)
-				
+				batch['test']['label'] = data.batch_label_binarize(batch['test']['label'],3,self.batch['test']['size'])
+				batch['test']['label'] = data.batch_binary_to_onehot_im(batch['test']['label'])
 				if self.batch_test_stats:
 					self.metrics['test']['loss'] += self.graph.test_on_batch(
 						[batch['test']['in'],batch['test']['support']], batch['test']['label'])		# Accumulated epoch
