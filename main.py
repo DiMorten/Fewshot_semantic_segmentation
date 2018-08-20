@@ -421,7 +421,7 @@ class Dataset(NetObject):
 		if self.debug>2: print("ALKL",patches_label_copy.shape)
 		while flag!=3:
 			#for _class in range(0,self.class_n):
-			for _class in [0,0]:
+			for _class in [3,3]:
 			
 				if flag==3:
 					break
@@ -508,6 +508,7 @@ class NetModel(NetObject):
 
 	def transition_down(self, pipe, filters, kernel=(3,3)):
 		pipe = Conv2D(filters, kernel, strides=(2, 2), padding='same')(pipe)
+		print(1.112)
 		pipe = keras.layers.BatchNormalization(axis=3)(pipe)
 		pipe = Activation('relu')(pipe)
 		#pipe = Conv2D(filters, (1, 1), padding='same')(pipe)
@@ -543,19 +544,20 @@ class NetModel(NetObject):
 		#in_im = Lambda(lambda x : x[0,:,:,:])(in_ims)
 		support = Input(shape=(self.patch_len, self.patch_len, self.channel_n+1),name="support")
 		filters = 64
-
+		print(1.1)
 		#support = Lambda(lambda y: K.squeeze(y, 1))(support)
 
 		#support=K.squeeze(support,axis=1)
 		#pipe = {'fwd': [], 'bckwd': []}
 		pipe_support=[]
 		pipe_support.append(self.transition_down(support, filters))  # 0 16x16
+		1.12
 		pipe_support.append(self.transition_down(pipe_support[-1], filters*2))  # 1 8x8
 		pipe_support.append(self.transition_down(pipe_support[-1], filters*4))  # 2 4x4
 		pipe_support.append(self.transition_down(pipe_support[-1], filters*8))  # 2 4x4
 		pipe_support.append(self.transition_down(pipe_support[-1], filters*8, kernel=(1,1)))  # 2 4x4
 					
-
+		print(1.2)
 		c = {'init_up': 0, 'up': 0}
 		pipe=[]
 
@@ -591,7 +593,7 @@ class NetModel(NetObject):
 
 		out = Conv2D(2, (1, 1), activation='softmax',
 					 padding='same')(pipe[-1])
-
+		print(1.3)
 		self.graph = Model([in_im,support], out)
 		#self.graph = Model(in_im, out)
 		
@@ -734,6 +736,7 @@ class NetModel(NetObject):
 flag = {"data_create": True, "label_one_hot": True}
 if __name__ == '__main__':
 	#
+	print(1)
 	data = Dataset(patch_len=args.patch_len, patch_step_train=args.patch_step_train,
 		patch_step_test=args.patch_step_test,exp_id=args.exp_id)
 	if flag['data_create']:
@@ -744,12 +747,18 @@ if __name__ == '__main__':
 					 patch_step_train=args.patch_step_train, eval_mode=args.eval_mode,
 					 batch_size_train=args.batch_size_train,batch_size_test=args.batch_size_test,
 					 patience=args.patience)
+	print(2)
+	
 	model.build()
+	print(3)
+	
 	model.loss_weights=np.array([0.2, 0.8])
 	metrics=['accuracy']
 	#metrics=['accuracy',fmeasure,categorical_accuracy]
+	
 	model.compile(loss='binary_crossentropy',
 				  optimizer=adam, metrics=metrics,loss_weights=model.loss_weights)
+	
 	if args.debug:
 		deb.prints(np.unique(data.patches['train']['label']))
 		deb.prints(data.patches['train']['label'].shape)
